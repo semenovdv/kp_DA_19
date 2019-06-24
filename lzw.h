@@ -16,9 +16,13 @@ public:
 
 protected:
 
-    size_t bufferSize = 10000;
+    const size_t bufferSize = 100000;
     size_t counter = 0;
     unsigned int next_code = 257;
+    
+    const unsigned int max_code = 4294967293; 
+    const unsigned int eob = 4294967294; /* end of buffer */
+    
     std::unordered_map< std::basic_string<char>, unsigned int> StrToCodeDict;
     std::unordered_map<unsigned int,  std::basic_string<char>> CodeToStrDict;
 
@@ -53,30 +57,41 @@ void LZW<In, Out>::Code(In *&is, Out *&os) {
 
     // remember - u int - 4 bytes - 32 bits
 
-    char ch='1';
-    std::string current_str = "";
-    //*is >> ch;
-    //std::cout << ch << " test letter in Code" << std::endl;
+    /* TODO :
+        1 - redo << for bytes  */
 
-    while (*is >> ch){
-        //std::cout << "got " << ch << std::endl;
-        current_str += ch;
-        //std::cout << "cur str " << current_str << std::endl;
-        if (StrToCodeDict.find(current_str) == StrToCodeDict.end()) {
-            //std::cout << ch << " in map" << std::endl;
-            if (next_code <= std::numeric_limits<unsigned int>::max())
-                StrToCodeDict[current_str] = next_code++;
-            
-            //std::cout << current_str << ": " << StrToCodeDict[current_str] << std::endl;
-            current_str.erase(current_str.size()-1);
+    std::vector<char> input(bufferSize);
+
+    while (*is) {
+        (*is).read(input.data(), input.capacity());
+        unsigned int buffSize = (*is).gcount();    
+        std::cout << buffSize << std::endl;
+        
+        int a;
+        std::cin >> a;  
+
+        if (buffSize) {
+            std::string current_str = "";
+            for(size_t i = 0; i < buffSize; i++) {
+                current_str += input[i];
+                if (StrToCodeDict.find(current_str) == StrToCodeDict.end()) {
+                    if (next_code <= std::numeric_limits<unsigned int>::max())
+                        StrToCodeDict[current_str] = next_code++;
+                    current_str.erase(current_str.size()-1);
+                    *os << StrToCodeDict[current_str];
+                    std::cout << current_str << std::endl;
+                    
+                    *os << " ";
+                    current_str = input[i];
+                }
+            }
+
+            if ( current_str.size() )
             *os << StrToCodeDict[current_str];
             
-            *os << " ";
-            current_str = ch;
-        }
-    }
-    if ( current_str.size() )
-        *os << StrToCodeDict[current_str];
+
+        } 
+    }/* end while */
 
 }
 
