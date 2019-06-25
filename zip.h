@@ -106,6 +106,7 @@ void ZIP::treat(int optind, int argc, char **argv){
                 treat_file();
         
             } 
+            if (!globalArgs.keep) fs::remove(mypath);
         }   
     }  /* 0 in files*/
     else {

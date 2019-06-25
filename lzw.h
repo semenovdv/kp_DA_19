@@ -15,13 +15,13 @@ public:
 
 
 protected:
-
-    const size_t bufferSize = 100000;//100000; // 10000
+    /* changes for level in constructor */
+    const size_t bufferSize = 100000; /* change for level */
     size_t counter = 0;
     const unsigned int eob = 257; /* end of buffer */
     unsigned int next_code = 258;
     
-    const unsigned int max_code = 4294967293; 
+    const unsigned int max_code = 4294967293; /* change for level */
     
     std::unordered_map< std::basic_string<char>, unsigned int> StrToCodeDict;
     std::unordered_map<unsigned int,  std::basic_string<char>> CodeToStrDict;

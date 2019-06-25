@@ -66,9 +66,6 @@
 
 /*
     TODO:
----------------------------
-see lzw decode
----------------------
 
         1 - let -k work
         2 - make working compression
