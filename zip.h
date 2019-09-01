@@ -3,6 +3,7 @@
 
 #include "includes.h"
 #include "lzw.h"
+#include "arifm.h"
 
 #define	GZIP_MAGIC     "\037\213" /* Magic header for gzip files, 1F 8B */
 
@@ -17,7 +18,7 @@ struct globalArgs_t {
     bool list;
     bool recursive;
     bool test;
-    int level; 
+    long level; 
     bool keep;
     std::string progname; 
     std::string filename;
@@ -55,35 +56,36 @@ public:
 
 
     template<typename T1, typename T2>
-    void work_dec(T1 *&In, T2 *&Out);
+    void work_code(T1 *&In, T2 *&Out, bool is_in_symb, bool is_out_symb);
 
     template<typename T1, typename T2>
-    void work_c(T1 *&In, T2 *&Out);
-    
-    
+    void work_decode(T1 *&In, T2 *&Out, bool is_in_symb, bool is_out_symb);
+
+
    
 };
 
 
 void ZIP::treat(int optind, int argc, char **argv){
 
-    /* if we have >= 1 file(s) */
+    // if we have >= 1 file(s) 
+
     if (globalArgs.filecount != 0) {
 
         while (optind < argc) {
 
-            /* if "-" as file */
+            // if "-" as file 
             if (std::string(argv[optind]) == "-"){
                 treat_stdin();
                 return;
             }
 
-            /* forming path to working file */
-            fs::path curpath = fs::current_path(); /* without filename */
-            fs::path mypath = fs::path(argv[optind]); /* filename */
+            // forming path to working file 
+            fs::path curpath = fs::current_path(); // before working (active) directory 
+            fs::path mypath = fs::path(argv[optind]); // after
                
 
-            if (fs::is_directory(mypath)) { /* were fs:status(path) */
+            if (fs::is_directory(mypath)) { 
 
                 std::cout << "directory " << std::string(argv[optind]) << std::endl;
 
@@ -106,9 +108,10 @@ void ZIP::treat(int optind, int argc, char **argv){
                 treat_file();
         
             } 
+
             if (!globalArgs.keep) fs::remove(mypath);
         }   
-    }  /* 0 in files*/
+    }  // 0 input files
     else {
         treat_stdin();
         return;
@@ -118,10 +121,10 @@ void ZIP::treat(int optind, int argc, char **argv){
 
 void ZIP::treat_stdin(){
 
-    /* Do not send compressed data to the terminal or read it from
-	 * the terminal. We get here when user invoked the program
-	 * without parameters, so be helpful. 
-     */
+    // Do not send compressed data to the terminal or read it from
+	// the terminal. We get here when user invoked the program
+	// without parameters, so be helpful. 
+    
     if (!globalArgs.list && 
         isatty(fileno((FILE *)(globalArgs.decompress ? stdin : stdout)))){
 
@@ -137,9 +140,9 @@ void ZIP::treat_stdin(){
     std::cout << "stdin, stdout" << std::endl;
 
     if (globalArgs.decompress) {
-        work_dec(in, out);
+        work_decode(in, out, true, true);
     } else {
-        work_c(in, out);
+        work_code(in, out, true, true);
     }
 }
 
@@ -170,19 +173,29 @@ void ZIP::treat_file(){
     if (globalArgs.decompress){
         std::cout << "decompress"<< std::endl;
 
-        std::ifstream *in = new std::ifstream( globalArgs.filename, std::ios_base::in);
-        if (!in)
+        std::ifstream *in = new std::ifstream( globalArgs.filename, std::ios_base::in|std::ios_base::binary);
+        
+        if (!fs::exists(globalArgs.filename)) {
+            std::cout << "ERROR: file not exists1" << std::endl;
+            delete in;
+            exit(ERROR);
+        }
+
+        if (!in) {
             std::cout << "EROOR: iin file ifstream not opened!" << std::endl;
+            delete in;
+            exit(ERROR);
+        }
         std::string newstr(globalArgs.filename, 0, globalArgs.filename.length()- 2);
         
         if (globalArgs.to_stdout){
 
             std::ostream *out = &std::cout;
-            work_dec(in, out);
+            work_decode(in, out, false, true);
         } else{
             std::ofstream *out = new std::ofstream(newstr, std::ios_base::out);
             std::cout << "decoding in " << newstr << std::endl;
-            work_dec(in, out);
+            work_decode(in, out, false, true);
             (*out).close();
             delete out;
         }
@@ -194,18 +207,28 @@ void ZIP::treat_file(){
         std::cout << "compress" << std::endl;
         std::ifstream *in = new std::ifstream( globalArgs.filename , std::ios_base::in);
 
-        if (!in)
+        if (!fs::exists(globalArgs.filename)) {
+            std::cout << "ERROR: file not exists1" << std::endl;
+            delete in;
+            exit(ERROR);
+        }
+
+        if (!in) {
             std::cout << "EROOR: iin file ifstream not opened!" << std::endl;
+            delete in;
+            exit(ERROR);
+        }
+            
                        
         if (globalArgs.to_stdout){
             std::ostream *out = &std::cout;
             std::cout << "ifstream , cout" << std::endl;
-            work_c(in, out);
+            work_code(in, out, true, true);
             
         } else{
             std::ofstream *out = new std::ofstream(globalArgs.filename +".l", std::ios_base::out);
             std::cout << "if, of" << std::endl;
-            work_c(in, out);
+            work_code(in, out, true, false);
             
             (*out).close();
             delete out;
@@ -228,29 +251,64 @@ void ZIP::do_list(int a, int b) {
 
 
 
-template<typename T1, typename T2>
-void ZIP::work_c(T1 *&In, T2 *&Out){
-    LZW<T1, T2> lzw;
+//----------------------------------------------------------//
 
-    /*
-        Some comments for next age 
-        -TODO:  1) put_byte(GZIP_MAGIC[0]);  magic header 
-                   put_byte(GZIP_MAGIC[1]);
-                   put_byte(DEFLATED);       compression method
-                2) make level support 
-
-     */
-    lzw.Code(In, Out);//, globalArgs.level); 
-    // code arifm with extra tmp file
-}
 
 template<typename T1, typename T2>
-void ZIP::work_dec(T1 *&In, T2 *&Out){
-    // decode arifm
-    LZW<T1, T2> lzw;
-    lzw.Decode(In, Out);
+void ZIP::work_code(T1 *&In, T2 *&Out, bool is_in_symb, bool is_out_symb) {
+
+    std::ofstream *outfile = new std::ofstream("gzip.tmp",  std::ios::binary);
+    if (!(*outfile).is_open()) 
+        std::cout << "Cannot open tmp file 1" << std::endl;
+
+    LZW<T1, std::ofstream> lzw(globalArgs.level);
+    lzw.Code(In, outfile, is_in_symb);
+
+    (*outfile).close();
+
+    std::ifstream *infile = new std::ifstream("gzip.tmp", std::ios::binary);
+    if (!(*infile).is_open()) 
+        std::cout << "Cannot open tmp file 2" << std::endl;
+    ARIFM<std::ifstream, T2> arifm(globalArgs.level);
+    arifm.Code(infile, Out, false, is_out_symb);
+    (*infile).close();
+
+    if(!fs::remove("gzip.tmp"))
+        std::cout << "ERROR: cannot delete tmp file" << std::endl;
     
 }
+
+
+
+
+template<typename T1, typename T2>
+void ZIP::work_decode(T1 *&In, T2 *&Out, bool is_in_symb, bool is_out_symb) {
+
+    std::ofstream *outfile = new std::ofstream("gzip.tmp",  std::ios::binary);
+    if (!(*outfile).is_open()) 
+        std::cout << "Cannot open tmp file 1" << std::endl;
+
+    ARIFM<T1, std::ofstream> arifm(globalArgs.level);
+    arifm.Decode(In, outfile, is_in_symb, false);
+
+    (*outfile).close();
+
+    std::ifstream *infile = new std::ifstream("gzip.tmp", std::ios::binary);
+    if (!(*infile).is_open()) 
+        std::cout << "Cannot open tmp file 2" << std::endl;
+    LZW<std::ifstream, T2> lzw(globalArgs.level);
+    lzw.Decode(infile, Out, false, is_out_symb);
+    (*infile).close();
+
+    if(!fs::remove("gzip.tmp"))
+        std::cout << "ERROR: cannot delete tmp file" << std::endl;
+   
+    
+}
+
+
+
+//----------------------------------------------------------//
 
 
 

@@ -1,4 +1,5 @@
 .vscode
-dirtest
 gzip
 test*
+a.out
+gzip.tmp

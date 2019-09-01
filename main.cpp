@@ -67,7 +67,7 @@
 /*
     TODO:
 
-        1 - let -k work
+        1 - DONE - let -k work
         2 - make working compression
             2.1 - add arifmethic coding
             2.2 - make norm bits input/output
@@ -76,6 +76,7 @@
         6 - DONE - make normal thread_stdin() 
         7 - let -l work
         8 - let -t work
+        9 - Redo the ARIFM from 0-9 to 0-maxint
 
     TODO later:
         1 - add multithreading (lzw -> arithmetic) using pipes or zmq

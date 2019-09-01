@@ -4,43 +4,64 @@
 #include "includes.h"
 
 
+
 template<typename In, typename Out>
 class LZW {
 public:
 
-    LZW();
+    LZW(long Level);
     
-    void Code(In *&is, Out *&os);
-    void Decode(In *&is, Out *&os);
+    void Code(In *&is, Out *&os, bool is_in_symb, bool is_out_symb = false); // is input/output symbolic or binary
+    void Decode(In *&is, Out *&os, bool is_in_symb, bool is_out_symb);
 
 
 protected:
-    /* changes for level in constructor */
-    const size_t bufferSize = 100000; /* change for level */
-    size_t counter = 0;
-    const unsigned int eob = 257; /* end of buffer */
-    unsigned int next_code = 258;
+    // changes for level in constructor 
     
-    const unsigned int max_code = 4294967293; /* change for level */
+    bool is_bin;
+    size_t counter;
+    size_t bufferSize;
+    const unsigned int eob = 257; // end of buffer 
+    char eob2 = 257;
+    unsigned int next_code;
+    unsigned int max_code; // change for level 
     
     std::unordered_map< std::basic_string<char>, unsigned int> StrToCodeDict;
     std::unordered_map<unsigned int,  std::basic_string<char>> CodeToStrDict;
 
     void InitDict();
 
-
 };
 
 
 template<typename In, typename Out>
-LZW<In, Out>::LZW() {
+LZW<In, Out>::LZW
+(  long Level   )
+{
+    if (Level == 1){
+        bufferSize = 100000;
+    } else
+    if (Level == 9) {
+        bufferSize = 100000;
+    } else {
+        bufferSize = 100000;
+    }
+
+
+    
+    counter = 0;
+    next_code = 258;
+    max_code = 4294967293;
+
 
 }
 
 template<typename In, typename Out>
 void LZW<In, Out>::InitDict() {
+
     StrToCodeDict.clear();
     CodeToStrDict.clear();
+    
     next_code = 258;
     counter = 0;
     
@@ -52,60 +73,87 @@ void LZW<In, Out>::InitDict() {
 
         counter++;
     }
-    /* added to make levels (end of buffer */
+
+    // added to make levels (end of buffer)
     StrToCodeDict.insert(std::make_pair("", eob));
     CodeToStrDict.insert(std::make_pair(eob, ""));
 
 }
 
+
+
 template<typename In, typename Out>
-void LZW<In, Out>::Code(In *&is, Out *&os) {
+void LZW<In, Out>::Code(In *&is, Out *&os, bool is_in_symb, bool is_out_symb) {
 
     // remember - u int - 4 bytes - 32 bits
 
-    /* TODO :
-        1 - redo << for bytes  */
+    // TODO :
+    //    1 - redo << for bytes  
+    
 
     std::vector<char> input(bufferSize);
+    std::vector<unsigned int> output(bufferSize);
+    unsigned int counter = 0;
 
     while (*is) {
+        // why here INIT?? because buffered and we put eob
         InitDict();
         (*is).read(input.data(), input.capacity());
-        unsigned int buffSize = (*is).gcount(); 
+        unsigned int readSize = (*is).gcount(); 
 
-        if (buffSize) {
+        if (readSize) {
             
             std::string current_str = "";
-            for(size_t i = 0; i < buffSize; i++) {
+            for(size_t i = 0; i < readSize; i++) {
                 current_str += input[i];
                 if (StrToCodeDict.find(current_str) == StrToCodeDict.end()) {
                     if (next_code <= std::numeric_limits<unsigned int>::max())
                         StrToCodeDict[current_str] = next_code++;
-                    current_str.erase(current_str.size()-1);
-                    *os << StrToCodeDict[current_str];
-                    //std::cout << "put: "<< StrToCodeDict[current_str] << " " << current_str<< std::endl;
+
+                    std::cout << "to dict : " << StrToCodeDict[current_str]  << " " << current_str << std::endl;
+                    current_str.pop_back();
+                    // put number to output buffer
+                    output[counter++] = StrToCodeDict[current_str];
+                    std::cout << "put: "<< StrToCodeDict[current_str] << " " << current_str<< std::endl;
                     
-                    *os << " ";
                     current_str = input[i];
+
+                    if (counter == bufferSize) {
+                        if (is_out_symb){
+                            (*os) << output;
+                        } else {
+                            (*os).write(reinterpret_cast<char*>(&output), sizeof(unsigned int) * counter);
+                        }
+                        counter = 0;
+                    }
                 }
             }
 
             if ( current_str.size() ){
-                *os << StrToCodeDict[current_str] << " ";
-                //std::cout << "Put: "<< StrToCodeDict[current_str] << " " << current_str << std::endl;
+                std::cout << "Put: "<< StrToCodeDict[current_str] << " " << current_str << std::endl;
+                if (is_out_symb){
+                    (*os) << StrToCodeDict[current_str];
+                } else {
+                    (*os).write(reinterpret_cast<char*>(&StrToCodeDict[current_str]), sizeof(unsigned int));
+                }
+                
             }
-
-            *os << eob << " ";
-            //std::cout << "put: "<< eob << std::endl;
-
+            
+            // put end of buffer
+            if (is_out_symb) {
+                (*os) << eob2;
+            } else {
+                (*os).write(&eob2, sizeof(char));
+            }
+  
         } 
-    }/* end while */
+    }// end while 
 
 }
 
 
 template<typename In, typename Out>
-void LZW<In, Out>::Decode(In *&is, Out *&os) {
+void LZW<In, Out>::Decode(In *&is, Out *&os, bool is_in_symb, bool is_out_symb) {
     
     
     std::vector<unsigned int> input(bufferSize);
@@ -116,13 +164,13 @@ void LZW<In, Out>::Decode(In *&is, Out *&os) {
         while (buffSize < bufferSize && (*is)){
             long long checking = 0;
             (*is) >> checking;
-            if (checking == 0) break; /* EOF */
+            if (checking == 0) break; // EOF 
             input[buffSize] = checking;
             buffSize++;
         }
 
         if (buffSize == 0 && !(*is)) break;
-
+        
         
 
         if (buffSize) {
