@@ -4,7 +4,6 @@
 #include "includes.h"
 #include <math.h>
 
-
 template<typename In, typename Out>
 class ARIFM {
 public:
@@ -16,188 +15,361 @@ public:
 
 
 protected:
-    const int num = 13;
+    
+    // сколько битов будет использовано для кодирования
+    const unsigned int Code_bits = 32; 
 
-    void CodeSymb(int i, Out *&os);
-    void SendBit(bool bit, Out *&os);
+    const unsigned int No_of_chars = 256;
+    const unsigned int EOF_sybol = No_of_chars + 1;
+    const unsigned int No_of_symbols = No_of_chars + 1;
+    
 
-    std::vector<unsigned long> frequency; // char to uint
-    std::vector<unsigned long> cum_frequency;
-    std::vector<unsigned long> buffer;
+    // swap zone for updating tables freq and cum-freq
+    std::vector<unsigned long> char_to_index = std::vector<unsigned long>(No_of_chars); 
+    std::vector<unsigned char> index_to_char = std::vector<unsigned char>(No_of_symbols+1);
+
+    // main tables of probability
+    std::vector<unsigned long> frequency = std::vector<unsigned long>(No_of_symbols+1); 
+    std::vector<unsigned long> cum_frequency = std::vector<unsigned long>(No_of_symbols+1);
+
+    // io for Code
+    std::vector<unsigned char> input_code;
+
+    // io for Decode
+    std::vector<unsigned short int> input_decode;
+    std::vector<unsigned char> output_decode;
+
     unsigned long bufferSize;
-    int countbits = 63;
+    
     /*
-        {zero, '1','2','3','4','5','6','7','8','9','0',' ', end}
-        ' ' is special
+        {0, 1, ..., 256, end = 257}
         end is special
     */
-    unsigned long l;
-    unsigned long h;
-    unsigned long counter;
-    unsigned int N; // do we need it?
+    unsigned long l; // left bound
+    unsigned long h; // right bound
 
-    const unsigned long leftmost = (1UL<<63);
-    const unsigned long Nminus2 = (1UL<<62);
+
+    unsigned long first_qtr;
+    unsigned long half;
+    unsigned long third_qtr;
+
+    unsigned long Max_frequency;
+
     
+
+    void CodeSymbol(unsigned long input_ch, Out *&os);
+    unsigned long long DecodeSymbol(In *&is);
+
+    void Update_model(unsigned long input_ch);
+
+    void bit_plus_follow(long bit, Out *&os);
+    
+    unsigned short int buffer = 0; // to store bits 
+    unsigned long long buffercounter = 0; // for next values to dtore in buffer
+
+    int input_bit(In *&is); 
+    void output_bit(int bit, Out *&os); 
+
+    unsigned long long bits_to_go;
+    unsigned long long ullbufferbits;
+    unsigned long long bits_to_follow = 0; // to form output bits
+    unsigned long long garbage_bits = 0;
+    unsigned long value = 0;
 
 };
 
-/*
-    TODO:
-        Redo the system from 0-9 to 0-maxint
-*/
+
 
 template<typename In, typename Out>
 ARIFM<In, Out>::ARIFM(int level) {
 
-    if (level == 1){
-        bufferSize = 100000;
-    } else { /* 9 */
-        bufferSize = 100000;
-    }
 
-    buffer.resize(bufferSize);
+    bufferSize = 60000;
+    input_code.resize(bufferSize);
+    input_decode.resize(bufferSize);
 
-    counter = 0;
     l = 0;
-    h = std::numeric_limits<unsigned long>::max(); // 2**N - 1 //change for level?
-    N = 64;
-    frequency.resize(num);
-    cum_frequency.resize(num);
-    /*
-        Fiiling tables
-        0 - common 
-        1~11 - for 0~9
-        12 - EOF
-    */
-    int co = 12;
-    cum_frequency[0] = co--;
-    for (int i = 1; i < num; i++){
-        frequency[i] = 1;
-        cum_frequency[i] = co--;
+    h = (1UL << Code_bits) - 1; //4294967295 if 32   // 2**N - 1 
+    Max_frequency = (1UL << (Code_bits-2)) - 1;
+
+    first_qtr = (h/4 + 1);
+    half = 2*first_qtr;
+    third_qtr = 3*first_qtr;
+    
+
+    // tables of recoding symbols
+    for (unsigned int i = 0; i < No_of_chars; i++) { 
+        char_to_index[i] = i+1;     
+        index_to_char[i+1] = i;
     }
 
+    int cf = No_of_symbols;
+    for(unsigned int i = 0; i <= No_of_symbols; i++) {
+       cum_frequency[i] = cf--;
+       frequency[i] = 1;
+    }
+   frequency[0]=0;
+    
 }
 
 template<typename In, typename Out>
 void ARIFM<In, Out>::Code(In *&is, Out *&os, bool is_in_symb, bool is_out_symb) {
 
-    char c;
-    unsigned int i;
+    bits_to_go = 16;
+    buffer = 0;
+    bits_to_follow = 0;
 
-    if ( !is.get(c) )
-        return false;
-    i = c & 0xff;
-    if ( !is.get(c) )
-        return false;
-    i |= (c & 0xff) << 8;
-    if ( i == eob )
-        return false;
-    else
-        return true;
-    }
 
-}
+    while(*is) {
+        (*is).read(reinterpret_cast<char*>(&input_code[0]), bufferSize*sizeof(unsigned char));
+        unsigned long long readSize = (*is).gcount(); 
 
-template<typename In, typename Out>
-void ARIFM<In, Out>::Decode(In *&is, Out *&os, bool is_in_symb, bool is_out_symb){
-    char a;
-    while ((*is).get(a)) {
-        std::cout << a;
-        (*os) << a;
-    }
-}
+        input_code.resize(readSize);
 
-/*
-template<typename In, typename Out>
-void ARIFM<In, Out>::Code(In *&is, Out *&os) {
+        if (readSize) {
 
-    for(int q = 0; q < num; q++){
-            std::cout << frequency[q] << " ";
-        }
-        std::cout << std::endl;
-        for(int q = 0; q < num; q++){
-            std::cout << cum_frequency[q] << " ";
-        }
-        std::cout << std::endl;
+                /* ОБРАТНЫЙ ВЫВОД ОЧЕНЬ ВАЖНО !!!
+                unsigned int a = ((unsigned int)input[i+1] << 8) | input[i];
+                */
 
-    char a; // symbol
-    while ((*is).get(a)) {
-        int i = a - '0';
-        if (i == -16) {
-            i = 11; // this is ' ' 
-        }
-        std::cout << "got: " << i  << std::endl;
-        
-        CodeSymb(i, os);
-        frequency[i]++;
-        for(int j = i-1; j>=0; j--) {
-            cum_frequency[j]++;
-        }
-        for(int q = 0; q < num; q++){
-            std::cout << frequency[q] << " ";
-        }
-        std::cout << std::endl;
-        for(int q = 0; q < num; q++){
-            std::cout << cum_frequency[q] << " ";
-        }
-        std::cout << std::endl;
-    }
-    CodeSymb(12, os); //  12 is end
-    counter++;
-    SendBit((leftmost & h) ? 1 : 0, os);
-    std::cout << "buffer: " << buffer[0] << std::endl;
-}
+            for(unsigned long i = 0; i < input_code.size(); i++) {
+                
+                // std::cout << "input_ch: " << (int)input_code[i] << std::endl;
+                unsigned long input_ch = char_to_index[input_code[i]];
+                
+                // std::cout << "symbol to code " << input_ch << std::endl;
+                if (input_ch == 273){
+                    std::cout << std::endl;
+                }
+                CodeSymbol(input_ch, os);
+                Update_model(input_ch);
+                
+            } // end for   
+        } // end if 
+    } // end while
 
-template<typename In, typename Out>
-void ARIFM<In, Out>::CodeSymb(int i, Out *&os){
+    CodeSymbol(EOF_sybol, os);
+
+    // done encoding
+    bits_to_follow++;
+    if (l < first_qtr) bit_plus_follow(0, os);
+    else bit_plus_follow(1, os);
     
+    // flush buffer
+    buffer = buffer >> bits_to_go;
+    (*os).write(reinterpret_cast<char*>(&buffer), sizeof(unsigned short int));
+    // std::cout << "put |" << (unsigned long)buffer << "| in file" << std::endl;
+}
+
+
+template<typename In, typename Out>
+void ARIFM<In, Out>::CodeSymbol(unsigned long input_ch, Out *&os) {
     unsigned long tmp = l;
-    l = tmp + round(((h-tmp+1)*cum_frequency[i])/cum_frequency[0]);
-    h = tmp + round(((h-tmp+1)*cum_frequency[i-1])/cum_frequency[0]) - 1;
+    l = tmp + (((h-tmp+1)*cum_frequency[input_ch])/cum_frequency[0]);
+    h = tmp + (((h-tmp+1)*cum_frequency[input_ch-1])/cum_frequency[0]) - 1;
+    // std::cout << "L " << l << ", H " << h << std::endl;
 
-    std::cout << "L" << l << ", H" << h << std::endl;
+    for(;;) {
+        if (h < half) {
+            bit_plus_follow(0, os);
+        } else if (l >= half) {
+            bit_plus_follow(1, os);
+            l -= half;
+            h -= half;
+        } else if (l >= first_qtr && h < third_qtr) {
+            bits_to_follow += 1;
+            l -= first_qtr;
+            h -= first_qtr;
+        } else 
+            break;
+        l = l*2;
+        h = h*2+1;
+    }
+              
+}
 
+
+
+template<typename In, typename Out>
+void ARIFM<In, Out>::Decode(In *&is, Out *&os, bool is_in_symb, bool is_out_symb) {
     
-    do {
-        if ((leftmost & l) == (leftmost & h)) {
-            std::cout << "got bits" << std::endl;
-            if (leftmost & h)
-                SendBit(1, os);
-            else 
-                SendBit(0, os);
-            l = 2*l;
-            h = 2*h+1;
-        } else if (h-l < cum_frequency[0]) {
-            std::cout << "h-l < [0]" << std::endl;
-            l = 2*(l-Nminus2);
-            h = 2*(h-Nminus2) +1;
-            counter++;
+    bits_to_go = 0;
+    garbage_bits = 0;
+    value = 0;
+
+    while(*is) {
+        (*is).read(reinterpret_cast<char*>(&input_decode[0]), bufferSize*sizeof(unsigned short int));
+        unsigned long long readSize = (*is).gcount(); 
+        // divide by 2 bcz unsigned short 2 bytes
+        input_decode.resize(readSize/2);
+        buffercounter = 0;
+        
+        value = 0;
+        for (unsigned int i = 0; i < Code_bits; i++){
+            value = 2*value + input_bit(is);
         }
-    } while (((leftmost & l) == (leftmost & h)) or (h-l < cum_frequency[0])); 
+
+        
+        if (readSize) {
+                /* ОБРАТНЫЙ ВЫВОД ОЧЕНЬ ВАЖНО !!!
+                unsigned int a = ((unsigned int)input[i+1] << 8) | input[i];
+                */
+
+            for(;;) {
+                int input_ch = DecodeSymbol(is);
+                // std::cout << "input_ch: " << input_ch << std::endl;
+                if ((unsigned int)input_ch == EOF_sybol) break;
+                unsigned char ch = index_to_char[input_ch];
+                (*os).write(reinterpret_cast<char*>(&ch), sizeof(unsigned char));
+                output_decode.push_back(ch);
+                // std::cout << "put |" << (unsigned long)ch << "| in file" << std::endl;
+
+                Update_model(input_ch);
+                
+            } // end for   
+        } // end if readSize
+    } // wnd while
+
+}
+
+
+
+template<typename In, typename Out>
+unsigned long long ARIFM<In, Out>::DecodeSymbol(In *&is) {
+
+    unsigned long long cum = (((value - l) + 1) * cum_frequency[0] - 1)/((h - l) + 1);
+    unsigned long long i = 1; 
+    while (cum_frequency[i] > cum) i++;
+
+    unsigned long long tmp = l;
+    l = tmp + ((h - tmp + 1)*cum_frequency[i])/cum_frequency[0];
+    h = tmp + ((h - tmp + 1)*cum_frequency[i-1])/cum_frequency[0] - 1;
+
+    for(;;) {
+        if (h < half) {
+            // do nothing
+        } else if (l >= half) {
+            value -= half;
+            l -= half;
+            h -= half;
+        } else if (l >= first_qtr && h < third_qtr) {
+            value -= first_qtr;
+            l -= first_qtr;
+            h -= first_qtr;
+        } else break;
+
+        l = 2*l;
+        h = 2*h+1;
+        value = 2*value + input_bit(is); 
+    }
+
+    return i;
+}
+
+
+
+template<typename In, typename Out>
+void ARIFM<In, Out>::Update_model(unsigned long symbol) {
+
+    // updating model
+    int index = 0;
+    // now cf[0] is max we divide by 2 all freqs
+    if (cum_frequency[0] >= Max_frequency) { 
+        int cum = 0;
+        for (index = No_of_symbols; index >= 0; index--) {
+            frequency[index] = (frequency[index]+1)/2;
+            cum_frequency[index] = cum;
+            cum += frequency[index];
+        }
+    }
+    
+    // finding suitable index
+    for (index = symbol; frequency[index]==frequency[index-1]; index--);
+    
+    // if we found
+    // some MAGIC, pls dont kill me, teacher
+    if ((unsigned int)index < symbol) {
+        unsigned long ch_i = index_to_char[index];
+        unsigned long ch_symbol = index_to_char[symbol];
+        index_to_char[index] = ch_symbol;
+        index_to_char[symbol] = ch_i;
+        char_to_index[ch_i] = symbol;
+        char_to_index[ch_symbol] = index;
+    } 
+
+    // updating tables 
+    frequency[index]++; 
+    while(index > 0) {
+        index -= 1;
+        cum_frequency[index] += 1;
+    }
+}
+
+
+
+template<typename In, typename Out>
+int ARIFM<In, Out>::input_bit(In *&is) {
+    
+    int t; // to return
+
+    if (bits_to_go == 0) {
+        if (buffercounter == bufferSize){
+            (*is).read(reinterpret_cast<char*>(&input_decode[0]), bufferSize*sizeof(unsigned short int));
+            unsigned long long readSize = (*is).gcount(); 
+            // divide by 2 bcz unsigned short 2 bytes
+            input_decode.resize(readSize/2);
+            buffercounter = 0;
+        }
+        // get new value from buffer
+        buffer = input_decode[buffercounter++];
+
+        if (static_cast<long long>(buffer) == EOF) { 
+            garbage_bits += 1;
+            if (garbage_bits > Code_bits - 2) {
+                std::cout << "Ошибка в сжатом файле" << std::endl;;
+                return 0;
+            }
+        }
+        
+        bits_to_go = 16;
+    }
+    t = buffer & 1;
+    buffer >>= 1;
+    bits_to_go -= 1;
+    return t;
+    
+}
+
+
+
+template<typename In, typename Out>
+void ARIFM<In, Out>::bit_plus_follow(long bit, Out *&os) {
+    output_bit(bit, os);
+    while(bits_to_follow > 0) {
+        output_bit(!bit, os);
+        bits_to_follow--;
+    }
 }
 
 template<typename In, typename Out>
-void ARIFM<In, Out>::SendBit(bool bit, Out *&os) {
-    //os << bit;
-    buffer[0] &= (bit ? (1UL<<countbits) : (0UL<<countbits));
-    countbits--;
-    if (countbits < 0) countbits = 63;
-    std::cout << "got bit " << (bit ? 1 : 0) << std::endl;
-    
-
-    while(counter > 0){
-        if (!bit) {
-            //os << 1;
-            //std::cout << 1 << std::endl;
-            buffer[0] &= (1UL<<countbits);
-        } else {
-            //os << 0;
-            //std::cout << 0 << std::endl;
-            buffer[0] &= (1UL<<countbits);
-        }
-        counter--;
+void ARIFM<In, Out>::output_bit(int bit, Out *&os) {
+    //std::cout << "Out: " << bit << std::endl;
+    buffer >>= 1;
+    if(bit)
+        buffer |= 0x8000;
+    /*std::cout << "buffer ";
+    std::cout << std::bitset<64>(buffer);
+    std::cout << std::endl;
+    */
+    bits_to_go -= 1;
+    if (bits_to_go == 0) {
+        
+        (*os).write(reinterpret_cast<char*>(&buffer), sizeof(unsigned short int));
+        // std::cout << "put |" << (unsigned long)buffer << "| in file" << std::endl;
+ 
+        bits_to_go = 16;
     }
 }
-*/
+
+
 #endif

@@ -6,6 +6,7 @@
 #include <iomanip>
 #include <string>
 #include <vector>
+#include <bitset>
 #include <unordered_map>
 #include <limits>
 
@@ -13,6 +14,7 @@
 #include <cstring>
 #include <experimental/filesystem>
 
+#include <ctime>
 
 #include <unistd.h>
 #include <stdio.h>

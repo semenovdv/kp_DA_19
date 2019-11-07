@@ -9,16 +9,11 @@
 
 namespace fs = std::experimental::filesystem;
 
-const unsigned int EOF_CODE = 256;
-
 struct globalArgs_t {
 
     bool to_stdout;
     bool decompress;
-    bool list;
     bool recursive;
-    bool test;
-    long level; 
     bool keep;
     std::string progname; 
     std::string filename;
@@ -33,10 +28,7 @@ public:
         globalArgs.to_stdout = false;
         globalArgs.decompress = false; 
         globalArgs.keep = false;
-        globalArgs.level = 1;
-        globalArgs.list = false;
         globalArgs.recursive = false;
-        globalArgs.test = false;
         globalArgs.progname = "";
         globalArgs.filename = "";
         globalArgs.filecount = 0;
@@ -44,16 +36,13 @@ public:
 
     globalArgs_t globalArgs;
 
-    /* start working from here */
+    // start working from here 
     void treat(int optind, int argc, char **argv); 
 
 
-    void treat_stdin(); /* input is stdin */ 
-    void treat_file(); /* regular file */
-    void treat_dir(); /* recursive directory */
-
-    void do_list(int , int);
-
+    void treat_stdin(); // input is stdin 
+    void treat_file(); // regular file 
+    void treat_dir(); // recursive directory 
 
     template<typename T1, typename T2>
     void work_code(T1 *&In, T2 *&Out, bool is_in_symb, bool is_out_symb);
@@ -87,10 +76,9 @@ void ZIP::treat(int optind, int argc, char **argv){
 
             if (fs::is_directory(mypath)) { 
 
-                std::cout << "directory " << std::string(argv[optind]) << std::endl;
+                //std::cout << "directory " << std::string(argv[optind]) << std::endl;
 
                 if (globalArgs.recursive) {
-                    std::cout << "works recursievely..." << std::endl;
                     globalArgs.path = curpath/mypath;
                     treat_dir();
                     optind++;
@@ -103,15 +91,14 @@ void ZIP::treat(int optind, int argc, char **argv){
                 globalArgs.path = curpath;
                 globalArgs.filename = mypath;
 
-                std::cout << "regular file " <<  std::string(argv[optind]) << std::endl;
                 optind++;                
                 treat_file();
         
             } 
 
-            if (!globalArgs.keep) fs::remove(mypath);
         }   
-    }  // 0 input files
+    }  
+    // 0 input files
     else {
         treat_stdin();
         return;
@@ -125,8 +112,7 @@ void ZIP::treat_stdin(){
 	// the terminal. We get here when user invoked the program
 	// without parameters, so be helpful. 
     
-    if (!globalArgs.list && 
-        isatty(fileno((FILE *)(globalArgs.decompress ? stdin : stdout)))){
+    if (isatty(fileno((FILE *)(globalArgs.decompress ? stdin : stdout)))){
 
         std::cerr << globalArgs.progname << ": compressed data not " << 
         (globalArgs.decompress ? "read from" : "written to") << " a terminal." << std::endl <<
@@ -137,9 +123,9 @@ void ZIP::treat_stdin(){
 
     std::istream *in = &std::cin;
     std::ostream *out = &std::cout;
-    std::cout << "stdin, stdout" << std::endl;
 
     if (globalArgs.decompress) {
+       
         work_decode(in, out, true, true);
     } else {
         work_code(in, out, true, true);
@@ -154,9 +140,8 @@ void ZIP::treat_dir() {
         if(fs::is_regular_file(p)) {
             globalArgs.path = p.path();
             globalArgs.filename = globalArgs.path.filename();
-            std::cout << "file " << globalArgs.path << " works!" << std::endl;
+            //std::cout << "file " << globalArgs.path << " works!" << std::endl;
 
-            std::cout << "thread file works!" << std::endl;
             fs::path workdir = fs::current_path();
             fs::current_path(globalArgs.path.parent_path());
 
@@ -168,10 +153,10 @@ void ZIP::treat_dir() {
 
 
 void ZIP::treat_file(){
-    
+    std::cout << globalArgs.filename << std::endl;
 
     if (globalArgs.decompress){
-        std::cout << "decompress"<< std::endl;
+        //std::cout << "decompress"<< std::endl;
 
         std::ifstream *in = new std::ifstream( globalArgs.filename, std::ios_base::in|std::ios_base::binary);
         
@@ -194,7 +179,7 @@ void ZIP::treat_file(){
             work_decode(in, out, false, true);
         } else{
             std::ofstream *out = new std::ofstream(newstr, std::ios_base::out);
-            std::cout << "decoding in " << newstr << std::endl;
+            //std::cout << "decoding in " << newstr << std::endl;
             work_decode(in, out, false, true);
             (*out).close();
             delete out;
@@ -204,7 +189,7 @@ void ZIP::treat_file(){
         delete in;
 
     } else {
-        std::cout << "compress" << std::endl;
+        //std::cout << "compress" << std::endl;
         std::ifstream *in = new std::ifstream( globalArgs.filename , std::ios_base::in);
 
         if (!fs::exists(globalArgs.filename)) {
@@ -222,12 +207,11 @@ void ZIP::treat_file(){
                        
         if (globalArgs.to_stdout){
             std::ostream *out = &std::cout;
-            std::cout << "ifstream , cout" << std::endl;
+
             work_code(in, out, true, true);
             
         } else{
             std::ofstream *out = new std::ofstream(globalArgs.filename +".l", std::ios_base::out);
-            std::cout << "if, of" << std::endl;
             work_code(in, out, true, false);
             
             (*out).close();
@@ -238,17 +222,11 @@ void ZIP::treat_file(){
         delete in;
         
     }
+
+    if (!globalArgs.keep) fs::remove(globalArgs.filename);
    
     
 }
-
-
-
-
-void ZIP::do_list(int a, int b) {
-
-}
-
 
 
 //----------------------------------------------------------//
@@ -257,24 +235,29 @@ void ZIP::do_list(int a, int b) {
 template<typename T1, typename T2>
 void ZIP::work_code(T1 *&In, T2 *&Out, bool is_in_symb, bool is_out_symb) {
 
-    std::ofstream *outfile = new std::ofstream("gzip.tmp",  std::ios::binary);
+    // TODO? write info about file and magic header
+
+    std::ofstream *outfile = new std::ofstream(globalArgs.filename + ".tmp",  std::ios::binary);
     if (!(*outfile).is_open()) 
         std::cout << "Cannot open tmp file 1" << std::endl;
 
-    LZW<T1, std::ofstream> lzw(globalArgs.level);
+    LZW<T1, std::ofstream> lzw(0);
     lzw.Code(In, outfile, is_in_symb);
 
     (*outfile).close();
+    
+    std::ifstream *infile = new std::ifstream(globalArgs.filename + ".tmp", std::ios::binary);
+    
 
-    std::ifstream *infile = new std::ifstream("gzip.tmp", std::ios::binary);
     if (!(*infile).is_open()) 
         std::cout << "Cannot open tmp file 2" << std::endl;
-    ARIFM<std::ifstream, T2> arifm(globalArgs.level);
+    ARIFM<std::ifstream, T2> arifm(0);
     arifm.Code(infile, Out, false, is_out_symb);
     (*infile).close();
 
-    if(!fs::remove("gzip.tmp"))
+    if(!fs::remove(globalArgs.filename + ".tmp"))
         std::cout << "ERROR: cannot delete tmp file" << std::endl;
+        
     
 }
 
@@ -284,107 +267,26 @@ void ZIP::work_code(T1 *&In, T2 *&Out, bool is_in_symb, bool is_out_symb) {
 template<typename T1, typename T2>
 void ZIP::work_decode(T1 *&In, T2 *&Out, bool is_in_symb, bool is_out_symb) {
 
-    std::ofstream *outfile = new std::ofstream("gzip.tmp",  std::ios::binary);
+    std::ofstream *outfile = new std::ofstream(globalArgs.filename + ".tmp",  std::ios::binary);
     if (!(*outfile).is_open()) 
         std::cout << "Cannot open tmp file 1" << std::endl;
 
-    ARIFM<T1, std::ofstream> arifm(globalArgs.level);
+    ARIFM<T1, std::ofstream> arifm(0);
     arifm.Decode(In, outfile, is_in_symb, false);
 
     (*outfile).close();
 
-    std::ifstream *infile = new std::ifstream("gzip.tmp", std::ios::binary);
+    std::ifstream *infile = new std::ifstream(globalArgs.filename + ".tmp", std::ios::binary);
     if (!(*infile).is_open()) 
         std::cout << "Cannot open tmp file 2" << std::endl;
-    LZW<std::ifstream, T2> lzw(globalArgs.level);
+    LZW<std::ifstream, T2> lzw(0);
     lzw.Decode(infile, Out, false, is_out_symb);
     (*infile).close();
 
-    if(!fs::remove("gzip.tmp"))
+    if(!fs::remove(globalArgs.filename + ".tmp"))
         std::cout << "ERROR: cannot delete tmp file" << std::endl;
    
     
 }
-
-
-
-//----------------------------------------------------------//
-
-
-
-
-/*
-template<typename T>
-class input_symbol_stream {
-public :
-    input_symbol_stream( T &input ) 
-        : m_input( input ) {}
-    bool operator>>( char &c )
-    {
-        if ( !m_input.get( c ) )
-            return false;
-        else
-            return true;
-    }
-private :
-    T &m_input;
-};
-
-template<typename T>
-class output_symbol_stream {
-public :
-    output_symbol_stream( T &output ) 
-        : m_output( output ) {}
-    void operator<<( const std::string &s )
-    {
-        m_output << s;
-    }
-private :
-    T &m_output;
-};
-
-// HELP ??? TODO
-
-template<typename T>
-class output_code_stream {
-public :
-    output_code_stream( T &output ) 
-        : m_output( output ) {}
-    void operator<<( unsigned int i )
-    {
-        m_output.put( i & 0xff );
-        m_output.put( (i>>8) & 0xff);
-    }
-    ~output_code_stream()
-    {
-        *this << EOF_CODE;
-    }
-private :
-    T &m_output;
-};
-
-template<typename T>
-class input_code_stream {
-public :
-    input_code_stream( T &input ) 
-        : m_input( input ) {}
-    bool operator>>( unsigned int &i )
-    {
-        char c;
-        if ( !m_input.get(c) )
-            return false;
-        i = c & 0xff;
-        if ( !m_input.get(c) )
-            return false;
-        i |= (c & 0xff) << 8;
-        if ( i == EOF_CODE )
-            return false;
-        else
-            return true;
-    }
-private :
-    T &m_input;
-};
-*/
 
 #endif
