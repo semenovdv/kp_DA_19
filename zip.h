@@ -153,7 +153,7 @@ void ZIP::treat_dir() {
 
 
 void ZIP::treat_file(){
-    std::cout << globalArgs.filename << std::endl;
+    //std::cout << globalArgs.filename << std::endl;
 
     if (globalArgs.decompress){
         //std::cout << "decompress"<< std::endl;
@@ -161,13 +161,13 @@ void ZIP::treat_file(){
         std::ifstream *in = new std::ifstream( globalArgs.filename, std::ios_base::in|std::ios_base::binary);
         
         if (!fs::exists(globalArgs.filename)) {
-            std::cout << "ERROR: file not exists1" << std::endl;
+            std::cerr << "ERROR: file not exists1" << std::endl;
             delete in;
             exit(ERROR);
         }
 
         if (!in) {
-            std::cout << "EROOR: iin file ifstream not opened!" << std::endl;
+            std::cerr << "EROOR: iin file ifstream not opened!" << std::endl;
             delete in;
             exit(ERROR);
         }
@@ -193,13 +193,13 @@ void ZIP::treat_file(){
         std::ifstream *in = new std::ifstream( globalArgs.filename , std::ios_base::in);
 
         if (!fs::exists(globalArgs.filename)) {
-            std::cout << "ERROR: file not exists1" << std::endl;
+            std::cerr << "ERROR: file not exists1" << std::endl;
             delete in;
             exit(ERROR);
         }
 
         if (!in) {
-            std::cout << "EROOR: iin file ifstream not opened!" << std::endl;
+            std::cerr << "EROOR: iin file ifstream not opened!" << std::endl;
             delete in;
             exit(ERROR);
         }
@@ -239,7 +239,7 @@ void ZIP::work_code(T1 *&In, T2 *&Out, bool is_in_symb, bool is_out_symb) {
 
     std::ofstream *outfile = new std::ofstream(globalArgs.filename + ".tmp",  std::ios::binary);
     if (!(*outfile).is_open()) 
-        std::cout << "Cannot open tmp file 1" << std::endl;
+        std::cerr << "Cannot open tmp file 1" << std::endl;
 
     LZW<T1, std::ofstream> lzw(0);
     lzw.Code(In, outfile, is_in_symb);
@@ -250,13 +250,13 @@ void ZIP::work_code(T1 *&In, T2 *&Out, bool is_in_symb, bool is_out_symb) {
     
 
     if (!(*infile).is_open()) 
-        std::cout << "Cannot open tmp file 2" << std::endl;
+        std::cerr << "Cannot open tmp file 2" << std::endl;
     ARIFM<std::ifstream, T2> arifm(0);
     arifm.Code(infile, Out, false, is_out_symb);
     (*infile).close();
 
     if(!fs::remove(globalArgs.filename + ".tmp"))
-        std::cout << "ERROR: cannot delete tmp file" << std::endl;
+        std::cerr << "ERROR: cannot delete tmp file" << std::endl;
         
     
 }
@@ -269,7 +269,7 @@ void ZIP::work_decode(T1 *&In, T2 *&Out, bool is_in_symb, bool is_out_symb) {
 
     std::ofstream *outfile = new std::ofstream(globalArgs.filename + ".tmp",  std::ios::binary);
     if (!(*outfile).is_open()) 
-        std::cout << "Cannot open tmp file 1" << std::endl;
+        std::cerr << "Cannot open tmp file 1" << std::endl;
 
     ARIFM<T1, std::ofstream> arifm(0);
     arifm.Decode(In, outfile, is_in_symb, false);
@@ -278,13 +278,13 @@ void ZIP::work_decode(T1 *&In, T2 *&Out, bool is_in_symb, bool is_out_symb) {
 
     std::ifstream *infile = new std::ifstream(globalArgs.filename + ".tmp", std::ios::binary);
     if (!(*infile).is_open()) 
-        std::cout << "Cannot open tmp file 2" << std::endl;
+        std::cerr << "Cannot open tmp file 2" << std::endl;
     LZW<std::ifstream, T2> lzw(0);
     lzw.Decode(infile, Out, false, is_out_symb);
     (*infile).close();
 
     if(!fs::remove(globalArgs.filename + ".tmp"))
-        std::cout << "ERROR: cannot delete tmp file" << std::endl;
+        std::cerr << "ERROR: cannot delete tmp file" << std::endl;
    
     
 }

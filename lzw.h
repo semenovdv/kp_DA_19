@@ -100,7 +100,7 @@ void LZW<In, Out>::Code(In *&is, Out *&os, bool is_in_symb, bool is_out_symb) {
 
                         // upd: we will never get here because of max_code changed to const
 
-                        std::cout << "PANIC!!!" << std::endl;
+                        std::cerr << "PANIC!!!" << std::endl;
                         exit(0);
 
                     }

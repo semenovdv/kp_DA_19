@@ -99,7 +99,7 @@ int main (int argc, char **argv) {
             break;
             
         default:
-            std::cout << "Smth Wrong" << std::endl;
+            std::cerr << "Smth Wrong" << std::endl;
             usage();
             exit(WARNING);
         }

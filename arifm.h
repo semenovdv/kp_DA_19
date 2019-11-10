@@ -138,9 +138,7 @@ void ARIFM<In, Out>::Code(In *&is, Out *&os, bool is_in_symb, bool is_out_symb) 
                 unsigned long input_ch = char_to_index[input_code[i]];
                 
                 // std::cout << "symbol to code " << input_ch << std::endl;
-                if (input_ch == 273){
-                    std::cout << std::endl;
-                }
+        
                 CodeSymbol(input_ch, os);
                 Update_model(input_ch);
                 
@@ -326,7 +324,7 @@ int ARIFM<In, Out>::input_bit(In *&is) {
         if (static_cast<long long>(buffer) == EOF) { 
             garbage_bits += 1;
             if (garbage_bits > Code_bits - 2) {
-                std::cout << "Ошибка в сжатом файле" << std::endl;;
+                std::cerr << "Ошибка в сжатом файле" << std::endl;;
                 return 0;
             }
         }
